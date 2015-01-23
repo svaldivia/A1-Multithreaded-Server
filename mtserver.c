@@ -24,6 +24,12 @@
 #define BACKLOG 10     // how many pending connections queue will hold
 #define MAXDATASIZE 100
 
+void *childFunction(void *);
+
+// Global variable
+int currentConnections = 0;
+pthread_mutex_t mutexA; //Lock
+
 void sigchld_handler(int s)
 {
     while(waitpid(-1, NULL, WNOHANG) > 0);
@@ -38,68 +44,6 @@ void *get_in_addr(struct sockaddr *sa)
     
     return &(((struct sockaddr_in6*)sa)->sin6_addr);
 }
-
-/* Child sever function
- * 
- * @param int input_sockfd: socket to send & receive info
- */
-void *childFunction(void * input_sockfd){
-    int numbytes;
-    char buf[MAXDATASIZE];
-    bool connectionAlive = true;
-    // Requests
-    char uptimeR[6] = "uptime";
-    char loadR[4] = "load";
-    char exitR[4] = "exit";
-    long response;
-    
-    
-    
-    int sockfd = *((int *)input_sockfd);
-    
-    while (connectionAlive) {
-        if ((numbytes = recv(sockfd,buf,MAXDATASIZE-1,0)) == -1) {
-            perror("recv");
-            exit(1);
-        }
-        
-        // Check if client closed connection
-        if (numbytes == 0){
-            break;
-        }
-        
-        // Evaluate input
-        if((*buf == *uptimeR) == 1){
-            printf("Received Uptime Request\n");
-            
-            int time = 10;
-            int network_order;
-            network_order = htonl(time);
-            
-            printf("no: %d int: %d\n",network_order , ntohl(network_order));
-            if (send(sockfd, &network_order, sizeof(network_order), 0) == -1)
-                perror("send");
-            
-        } else if((*buf == *loadR) == 1){
-            printf("Received Load Request\n");
-            if (send(sockfd, "Temp", 4, 0) == -1)
-                perror("send");
-            
-        } else if((*buf == *exitR) == 1){
-            connectionAlive = false;
-        } else {
-            printf("stuff lalala!\n");
-        }
-        
-    }
-    // Close connection
-    close(sockfd);
-    return NULL;
-}
-
-
-
-
 
 /* Main server function
  *
@@ -217,55 +161,150 @@ int main(int argc, char **argv) {
     
     printf("server: waiting for connections...\n");
     
-    int currentConnections;
+    // Create thread array
+    pthread_t thr[maxConn];
+    // Initialize lock for global variable
+    pthread_mutex_init(&mutexA,NULL);
     
-    while(1) {  // main accept() loop
-        sin_size = sizeof their_addr;
-        new_fd = accept(sockfd, (struct sockaddr *)&their_addr, &sin_size);
-        if (new_fd == -1) {
-            perror("accept");
-            continue;
-        }
+    // Variable to reference thread
+    pthread_t childT;
+    
+    sin_size = sizeof their_addr;
+    
+    while((new_fd = accept(sockfd, (struct sockaddr *)&their_addr, &sin_size))) {  // main accept() loop
+        // Connection accepted-------
         
         inet_ntop(their_addr.ss_family,
                   get_in_addr((struct sockaddr *)&their_addr),
                   s, sizeof s);
         printf("server: got connection from %s\n", s);
         
+        // Update current connections
         currentConnections++;
-        printf("Current connections: %d\n",currentConnections);
+        printf("server: Current connections: %d\n",currentConnections);
         
-        //Create thread
-//        if(void *childThread = createThread(childThread, &new_fd)){
-//            fprintf(stderr,"Error creating Thread\n");
-//            return 1;
-//        }
-//        void *childThread = createThread(childFunction, &new_fd);
-//
-//        runThread(&childThread,NULL);
-        
-        
-        // Variable to reference thread
-        pthread_t childT;
-        
-        // Create thread
-        if(pthread_create(&childT, NULL,childFunction,&new_fd)){
-            fprintf(stderr,"Error creating thread\n");
-            return 1;
-        }
-        
-        // Join thread
-        if(pthread_join(childT,NULL)){
-            fprintf(stderr, "Error joining thread\n");
-            return 2;
+        if(currentConnections > maxConn){
+            printf("server: Connection limit reached, closing connection...\n");
+            currentConnections--;
+            close(new_fd);
+        } else {
             
+            // Create thread
+            if(pthread_create(&childT, NULL,childFunction,&new_fd)){
+                fprintf(stderr,"Error creating thread\n");
+                return 1;
+            }
+            
+            // Detach Thread
+            if(pthread_detach(childT)){
+                fprintf(stderr, "Error detaching thread\n");
+                return 2;
+            }
         }
         
-        
-        currentConnections--;
-        close(new_fd);  // parent doesn't need this
+    }
+    
+    if (new_fd < 0) {
+        perror("accept");
+        return 1;
     }
     
     return 0;
 
+}
+
+
+/* Child sever function
+ *
+ * @param int input_sockfd: socket to send & receive info
+ */
+void *childFunction(void * input_sockfd){
+    int numbytes;
+    char buf[MAXDATASIZE];
+    bool connectionAlive = true;
+    // Requests
+    char uptimeR[6] = "uptime";
+    char loadR[4] = "load";
+    char exitR[4] = "exit";
+    
+    
+    
+    int sockfd = *((int *)input_sockfd);
+    
+    while (connectionAlive) {
+        if ((numbytes = recv(sockfd,buf,MAXDATASIZE-1,0)) == -1) {
+            perror("recv");
+            exit(1);
+        }
+        
+        // Check if client closed connection
+        if (numbytes == 0){
+            printf("server: Closed connection to client\n");
+            break;
+        }
+        printf("bytes %d\n",numbytes);
+        
+        //TODO: evaluate string input
+        
+        // Evaluate input
+        if((strncmp(buf,"uptime",6)) == 0){
+            printf("server: Received Uptime Request\n");
+            
+            //TODO: use sysinfo.uptime
+            
+            int timeStamp = (int)time(NULL);
+            int network_order;
+            network_order = htonl(timeStamp);
+            
+            printf("no: %d int: %d\n",network_order , ntohl(network_order));
+            if (send(sockfd, &network_order, sizeof(network_order), 0) == -1)
+                perror("send");
+            
+        } else if(strncmp(buf,"load",4) == 0){
+            printf("server: Received Load Request\n");
+            
+            int connections;
+            //Lock before using variable
+            pthread_mutex_lock (&mutexA);
+            connections = currentConnections;
+            pthread_mutex_unlock(&mutexA);
+            
+            int network_order;
+            network_order = htonl(connections);
+            printf("no: %d int: %d\n",network_order , ntohl(network_order));
+            if (send(sockfd, &network_order, sizeof(network_order), 0) == -1)
+                perror("send");
+            
+        } else if(strncmp(buf,"exit",4) == 0){
+            connectionAlive = false;
+        } else {
+            // Check if input is an arbitrary array on numbers
+            if (buf[numbytes-1] == ' ') {
+                // Check values
+                printf("check");
+                
+            }
+            
+            // Invalid input
+//            printf("server: Invalid input\n");
+//            int invalid = -1;
+//            int network_order;
+//            network_order = htonl(invalid);
+//            printf("no: %d int: %d\n",network_order , ntohl(network_order));
+//            if (send(sockfd, &network_order, sizeof(network_order), 0) == -1)
+//                perror("send");
+            
+        }
+        
+    }
+
+    // Update current connections
+    pthread_mutex_lock (&mutexA);
+    currentConnections--;
+    pthread_mutex_unlock(&mutexA);
+    
+    // Close connection----------
+    close(sockfd);
+    pthread_exit(NULL);
+    return NULL;
 }

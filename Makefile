@@ -10,6 +10,7 @@ PROXYOBJS=mtserver.o
 
 proxyFilter: $(PROXYOBJS)
 	$(CC) -o mtserver $(PROXYOBJS)  $(CLIBS)
+	$(CC) client.c -o client
 
 
 

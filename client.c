@@ -17,6 +17,7 @@
 
 #define MAXDATASIZE 100 // max number of bytes we can get at once
 
+
 // get sockaddr, IPv4 or IPv6:
 void *get_in_addr(struct sockaddr *sa)
 {
@@ -88,14 +89,11 @@ int main(int argc, char *argv[])
     }
     
     printf("bytes read: %d\n",numbytes);
+
     
-    int n;
-    sscanf(buf,"%d",&n);
+    int uptime = ntohl(*(int*)buf);
     
-    int n2 = ntohl(n);
-    
-    buf[numbytes] = '\0';
-    printf("client: received '%s' %d\n",buf,n);
+    printf("client: received %d\n",uptime);
     
     // Load
     printf("Sending load\n");
@@ -109,7 +107,25 @@ int main(int argc, char *argv[])
     
     printf("bytes read: %d\n",numbytes);
     
-    printf("client: received '%s'\n",buf);
+    int load = ntohl(*(int*)buf);
+    
+    printf("client: received %d\n",load);
+    
+    // Add string
+    printf("Sending 123\n");
+    if (send(sockfd, "123 ", 4, 0) == -1)
+        perror("send");
+    
+    if ((numbytes = recv(sockfd, buf, MAXDATASIZE-1, 0)) == -1) {
+        perror("recv");
+        exit(1);
+    }
+    
+    printf("bytes read: %d\n",numbytes);
+    
+    int result = ntohl(*(int*)buf);
+    
+    printf("client: received %d\n",result);
     
     close(sockfd);
     
