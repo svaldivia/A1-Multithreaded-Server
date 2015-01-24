@@ -1,7 +1,6 @@
 /*
  ** mtserver.c -- Multi threaded server
  *
- * Based on Beej's Guide to Network Programming
  */
 
 #include <stdio.h>
@@ -19,7 +18,8 @@
 #include <pthread.h>
 #include <stdbool.h>
 #include <time.h>
-#include "Thread.h"
+//#include <sys/sysinfo.h>
+
 
 #define BACKLOG 10     // how many pending connections queue will hold
 #define MAXDATASIZE 100
@@ -222,11 +222,8 @@ void *childFunction(void * input_sockfd){
     int numbytes;
     char buf[MAXDATASIZE];
     bool connectionAlive = true;
-    // Requests
-    char uptimeR[6] = "uptime";
-    char loadR[4] = "load";
-    char exitR[4] = "exit";
-    
+    bool invalidRequest = false;
+    int invalidCount = 0;
     
     
     int sockfd = *((int *)input_sockfd);
@@ -242,15 +239,24 @@ void *childFunction(void * input_sockfd){
             printf("server: Closed connection to client\n");
             break;
         }
-        printf("bytes %d\n",numbytes);
-        
-        //TODO: evaluate string input
+        printf("Bytes received %d\n",numbytes);
         
         // Evaluate input
         if((strncmp(buf,"uptime",6)) == 0){
+            //------------------
+            //       Uptime
+            //------------------
+            
             printf("server: Received Uptime Request\n");
             
             //TODO: use sysinfo.uptime
+//            struct sysinfo info;
+//            sysinfo(&info);
+//            printf("Uptime = %ld\n", info.uptime);
+//            int network_order;
+//            network_order = htonl(info.uptime);
+            //-------------
+            
             
             int timeStamp = (int)time(NULL);
             int network_order;
@@ -261,6 +267,10 @@ void *childFunction(void * input_sockfd){
                 perror("send");
             
         } else if(strncmp(buf,"load",4) == 0){
+            //------------------
+            //       Load
+            //------------------
+            
             printf("server: Received Load Request\n");
             
             int connections;
@@ -276,26 +286,67 @@ void *childFunction(void * input_sockfd){
                 perror("send");
             
         } else if(strncmp(buf,"exit",4) == 0){
+            //------------------
+            //       Exit
+            //------------------
+            
+            printf("server: Exit Request\n");
+
+            int network_order = htonl(0);
+            printf("no: %d int: %d\n",network_order , ntohl(network_order));
+            if (send(sockfd, &network_order, sizeof(network_order), 0) == -1)
+                perror("send");
             connectionAlive = false;
         } else {
+            //-------------------
+            //     Add Digits
+            //-------------------
+            
+            invalidRequest = false;
+            int sum = 0;
+            int network_order;
+            
             // Check if input is an arbitrary array on numbers
             if (buf[numbytes-1] == ' ') {
                 // Check values
-                printf("check");
+                printf("check\n");
+                int i;
+                for (i = 0; i < numbytes-1; i++) {
+                    if (buf[i] >= '0' && buf[i] <= '9') {
+                        // Add to sum
+                        printf("Adding: %d to %d\n",(int)buf[i]-48,sum);
+                        sum += ((int)buf[i] - 48);
+                    }else{
+                        invalidRequest = true;
+                        break;
+                    }
+                }
                 
+            } else {
+                invalidRequest = true;
             }
             
             // Invalid input
-//            printf("server: Invalid input\n");
-//            int invalid = -1;
-//            int network_order;
-//            network_order = htonl(invalid);
-//            printf("no: %d int: %d\n",network_order , ntohl(network_order));
-//            if (send(sockfd, &network_order, sizeof(network_order), 0) == -1)
-//                perror("send");
-            
+            if(invalidRequest){
+                printf("server: Invalid input\n");
+                invalidCount++;
+                int invalid = -1;
+                network_order = htonl(invalid);
+                printf("no: %d int: %d\n",network_order , ntohl(network_order));
+                if (send(sockfd, &network_order, sizeof(network_order), 0) == -1)
+                    perror("send");
+                
+                // Check invalid count
+                if(invalidCount == 2){
+                    connectionAlive = false;
+                }
+            } else {
+                // Send sum
+                network_order = htonl(sum);
+                if (send(sockfd, &network_order, sizeof(network_order), 0) == -1)
+                    perror("send");
+            }
         }
-        
     }
 
     // Update current connections

@@ -1,5 +1,5 @@
 /*
- ** client.c -- a stream socket client demo
+ ** client.c -- a client to unit test the functions in mtserver.c
  */
 
 #include <stdio.h>
@@ -111,9 +111,9 @@ int main(int argc, char *argv[])
     
     printf("client: received %d\n",load);
     
-    // Add string
-    printf("Sending 123\n");
-    if (send(sockfd, "123 ", 4, 0) == -1)
+    // Add digits
+    printf("Sending 7777\n");
+    if (send(sockfd, "7777 ", 5, 0) == -1)
         perror("send");
     
     if ((numbytes = recv(sockfd, buf, MAXDATASIZE-1, 0)) == -1) {
@@ -126,6 +126,66 @@ int main(int argc, char *argv[])
     int result = ntohl(*(int*)buf);
     
     printf("client: received %d\n",result);
+    
+    //---------------------------------------------
+    // The following requests can't all run,
+    // after 2 invalid requests the server closes
+    // the connection and the last request receives
+    // a -1 response. If one of invalid request is
+    // commented, the exit works as expected.
+    //---------------------------------------------
+    
+    // 2 invalid requests
+    printf("Sending ads98h32 invalid request 1\n");
+    if (send(sockfd, "ads98h32", 8, 0) == -1)
+        perror("send");
+    
+    if ((numbytes = recv(sockfd, buf, MAXDATASIZE-1, 0)) == -1) {
+        perror("recv");
+        exit(1);
+    }
+    
+    printf("bytes read: %d\n",numbytes);
+    
+    int invalid1 = ntohl(*(int*)buf);
+    
+    printf("client: received %d\n",invalid1);
+    
+    
+    printf("Sending 123d45 invalid request 2\n");
+    if (send(sockfd, "123d45", 6, 0) == -1)
+        perror("send");
+    
+    if ((numbytes = recv(sockfd, buf, MAXDATASIZE-1, 0)) == -1) {
+        perror("recv");
+        exit(1);
+    }
+    
+    printf("bytes read: %d\n",numbytes);
+    
+    int invalid2 = ntohl(*(int*)buf);
+    
+    printf("client: received %d\n",invalid2);
+    
+    
+//    // Exit
+//    printf("Sending exit\n");
+//    if (send(sockfd, "exit",4, 0) == -1)
+//        perror("send");
+//    
+//    if ((numbytes = recv(sockfd, buf, MAXDATASIZE-1, 0)) == -1) {
+//        perror("recv");
+//        exit(1);
+//    }
+//    
+//    printf("bytes read: %d\n",numbytes);
+//    
+//    int exitR = ntohl(*(int*)buf);
+//    
+//    printf("client: received %d\n",exitR);
+    
+    
+    
     
     close(sockfd);
     
