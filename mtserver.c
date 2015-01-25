@@ -18,7 +18,7 @@
 #include <pthread.h>
 #include <stdbool.h>
 #include <time.h>
-//#include <sys/sysinfo.h>
+#include <sys/sysinfo.h>
 
 
 #define BACKLOG 10     // how many pending connections queue will hold
@@ -249,18 +249,11 @@ void *childFunction(void * input_sockfd){
             
             printf("server: Received Uptime Request\n");
             
-            //TODO: use sysinfo.uptime
-//            struct sysinfo info;
-//            sysinfo(&info);
-//            printf("Uptime = %ld\n", info.uptime);
-//            int network_order;
-//            network_order = htonl(info.uptime);
-            //-------------
-            
-            
-            int timeStamp = (int)time(NULL);
+	    struct sysinfo info;
+            sysinfo(&info);
+            printf("Uptime = %ld\n", info.uptime);
             int network_order;
-            network_order = htonl(timeStamp);
+            network_order = htonl(info.uptime);
             
             printf("no: %d int: %d\n",network_order , ntohl(network_order));
             if (send(sockfd, &network_order, sizeof(network_order), 0) == -1)
