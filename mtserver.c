@@ -236,7 +236,6 @@ void *childFunction(void * input_sockfd){
         
         // Check if client closed connection
         if (numbytes == 0){
-            printf("server: Closed connection to client\n");
             break;
         }
         printf("Bytes received %d\n",numbytes);
@@ -255,7 +254,6 @@ void *childFunction(void * input_sockfd){
             int network_order;
             network_order = htonl(info.uptime);
             
-            printf("no: %d int: %d\n",network_order , ntohl(network_order));
             if (send(sockfd, &network_order, sizeof(network_order), 0) == -1)
                 perror("send");
             
@@ -274,7 +272,6 @@ void *childFunction(void * input_sockfd){
             
             int network_order;
             network_order = htonl(connections);
-            printf("no: %d int: %d\n",network_order , ntohl(network_order));
             if (send(sockfd, &network_order, sizeof(network_order), 0) == -1)
                 perror("send");
             
@@ -286,7 +283,6 @@ void *childFunction(void * input_sockfd){
             printf("server: Exit Request\n");
 
             int network_order = htonl(0);
-            printf("no: %d int: %d\n",network_order , ntohl(network_order));
             if (send(sockfd, &network_order, sizeof(network_order), 0) == -1)
                 perror("send");
             connectionAlive = false;
@@ -302,7 +298,6 @@ void *childFunction(void * input_sockfd){
             // Check if input is an arbitrary array on numbers
             if (buf[numbytes-1] == ' ') {
                 // Check values
-                printf("check\n");
                 int i;
                 for (i = 0; i < numbytes-1; i++) {
                     if (buf[i] >= '0' && buf[i] <= '9') {
@@ -321,11 +316,11 @@ void *childFunction(void * input_sockfd){
             
             // Invalid input
             if(invalidRequest){
-                printf("server: Invalid input\n");
+                //printf("server: Invalid input\n");
                 invalidCount++;
-                int invalid = -1;
+		printf("server: Invalid input: %d \n",invalidCount);
+		int invalid = -1;
                 network_order = htonl(invalid);
-                printf("no: %d int: %d\n",network_order , ntohl(network_order));
                 if (send(sockfd, &network_order, sizeof(network_order), 0) == -1)
                     perror("send");
                 
@@ -348,6 +343,7 @@ void *childFunction(void * input_sockfd){
     pthread_mutex_unlock(&mutexA);
     
     // Close connection----------
+    printf("server: Closed connection to client\n");
     close(sockfd);
     pthread_exit(NULL);
     return NULL;
