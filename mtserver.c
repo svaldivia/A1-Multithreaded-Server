@@ -18,7 +18,7 @@
 #include <pthread.h>
 #include <stdbool.h>
 #include <time.h>
-#include <sys/sysinfo.h>
+//#include <sys/sysinfo.h>
 
 
 #define BACKLOG 10     // how many pending connections queue will hold
@@ -240,99 +240,324 @@ void *childFunction(void * input_sockfd){
         }
         printf("Bytes received %d\n",numbytes);
         
-        // Evaluate input
-        if((strncmp(buf,"uptime",6)) == 0){
-            //------------------
-            //       Uptime
-            //------------------
+        // Loop through received bytes
+        
+        int j;
+        int add;
+        for (j = 0; j < numbytes; j++) {
             
-            printf("server: Received Uptime Request\n");
+            invalidRequest = false;
+            // Invalid input
+            if (!(buf[j] == 'l' || buf[j] == 'e' || buf[j] == 'u' || (buf[j] >= '0' && buf[j] <= '9'))) {
+                // invalid request
+                invalidCount++;
+                invalidRequest = true;
+            }
             
-	    struct sysinfo info;
-            sysinfo(&info);
-            printf("Uptime = %ld\n", info.uptime);
-            int network_order;
-            network_order = htonl(info.uptime);
+            // Send invalid input message
+            if(invalidRequest){
+                printf("server: Invalid input: %d \n",invalidCount);
+                int network_order = htonl(-1);
+                if (send(sockfd, &network_order, sizeof(network_order), 0) == -1)
+                    perror("send");
+                invalidRequest = false;
+            }
             
-            if (send(sockfd, &network_order, sizeof(network_order), 0) == -1)
-                perror("send");
+            // Check invalid requests
+            if (invalidCount > 2) {
+                printf("server: Too many invalid requests\n");
+                connectionAlive = false;
+                break;
+            }
+            // Check if there are more bytes
+            if(j >= numbytes){
+                break;
+            }
             
-        } else if(strncmp(buf,"load",4) == 0){
-            //------------------
-            //       Load
-            //------------------
-            
-            printf("server: Received Load Request\n");
-            
-            int connections;
-            //Lock before using variable
-            pthread_mutex_lock (&mutexA);
-            connections = currentConnections;
-            pthread_mutex_unlock(&mutexA);
-            
-            int network_order;
-            network_order = htonl(connections);
-            if (send(sockfd, &network_order, sizeof(network_order), 0) == -1)
-                perror("send");
-            
-        } else if(strncmp(buf,"exit",4) == 0){
-            //------------------
-            //       Exit
-            //------------------
-            
-            printf("server: Exit Request\n");
-
-            int network_order = htonl(0);
-            if (send(sockfd, &network_order, sizeof(network_order), 0) == -1)
-                perror("send");
-            connectionAlive = false;
-        } else {
             //-------------------
             //     Add Digits
             //-------------------
             
-            invalidRequest = false;
-            int sum = 0;
-            int network_order;
-            
-            // Check if input is an arbitrary array on numbers
-            if (buf[numbytes-1] == ' ') {
-                // Check values
-                int i;
-                for (i = 0; i < numbytes-1; i++) {
-                    if (buf[i] >= '0' && buf[i] <= '9') {
-                        // Add to sum
-                        printf("Adding: %d to %d\n",(int)buf[i]-48,sum);
-                        sum += ((int)buf[i] - 48);
-                    }else{
+            // Check if digit
+            if (buf[j] >= '0' && buf[j] <= '9') {
+                add = 0;
+                add += buf[j]-48;
+                for (j = j+1; j < numbytes; j++) {
+                    // Digit?
+                    if (buf[j] >= '0' && buf[j] <= '9') {
+                        printf("add = %d\n", add);
+                        add += buf[j]-48;
+                    } else if (buf[j] == ' ') {
+                        // Send addition
+                        printf("server: Received Add digits Request. Addition = %d \n",add);
+                        
+                        int network_order = htonl(add);
+                        if (send(sockfd, &network_order, sizeof(network_order), 0) == -1)
+                            perror("send");
+                        
+                        break;
+                        
+                    } else {
+                        // invalid request
+                        invalidCount++;
                         invalidRequest = true;
                         break;
                     }
                 }
                 
-            } else {
-                invalidRequest = true;
+                if (j >= numbytes && buf[j-1] != ' ' && invalidRequest == false) {
+                    // invalid request
+                    invalidCount++;
+                    invalidRequest = true;
+                }
+            }
+            // Send invalid input message
+            if(invalidRequest){
+                printf("server: Invalid input: %d \n",invalidCount);
+                int network_order = htonl(-1);
+                if (send(sockfd, &network_order, sizeof(network_order), 0) == -1)
+                    perror("send");
+                invalidRequest = false;
             }
             
-            // Invalid input
-            if(invalidRequest){
-                //printf("server: Invalid input\n");
-                invalidCount++;
-		printf("server: Invalid input: %d \n",invalidCount);
-		int invalid = -1;
-                network_order = htonl(invalid);
-                if (send(sockfd, &network_order, sizeof(network_order), 0) == -1)
-                    perror("send");
-                
-                // Check invalid count
-                if(invalidCount == 2){
-                    connectionAlive = false;
+            // Check invalid requests
+            if (invalidCount > 2) {
+                printf("server: Too many invalid requests\n");
+                connectionAlive = false;
+                break;
+            }
+            // Check if there are more bytes
+            if(j >= numbytes){
+                break;
+            }
+            
+            //------------------
+            //       Load
+            //------------------
+            
+            // Check if load
+            if (buf[j] == 'l') {
+                j++;
+                if (j >= numbytes) {
+                    // invalid request
+                    invalidCount++;
+                    invalidRequest = true;
+                } else if (buf[j] == 'o'){
+                    j++;
+                    if (j >= numbytes) {
+                        // invalid request
+                        invalidCount++;
+                        invalidRequest = true;
+                    } else if(buf[j] == 'a'){
+                        j++;
+                        if (j >= numbytes) {
+                            // invalid request
+                            invalidCount++;
+                            invalidRequest = true;
+                        } else if(buf[j] == 'd'){
+                            // Send load
+
+                            printf("server: Received Load Request\n");
+                            
+                            int connections;
+                            //Lock before using variable
+                            pthread_mutex_lock (&mutexA);
+                            connections = currentConnections;
+                            pthread_mutex_unlock(&mutexA);
+                            
+                            int network_order;
+                            network_order = htonl(connections);
+                            if (send(sockfd, &network_order, sizeof(network_order), 0) == -1)
+                                perror("send");
+                        } else {
+                            // invalid request
+                            invalidCount ++;
+                            invalidRequest = true;
+                        }
+                    } else {
+                        // invalid request
+                        invalidCount ++;
+                        invalidRequest = true;
+                    }
+                } else {
+                    // invalid request
+                    invalidCount ++;
+                    invalidRequest = true;
                 }
-            } else {
-                // Send sum
-                network_order = htonl(sum);
+            }
+            
+            // Send invalid input message
+            if(invalidRequest){
+                printf("server: Invalid input: %d \n",invalidCount);
+                int network_order = htonl(-1);
                 if (send(sockfd, &network_order, sizeof(network_order), 0) == -1)
                     perror("send");
+                invalidRequest = false;
+            }
+            
+            // Check invalid requests
+            if (invalidCount > 2) {
+                printf("server: Too many invalid requests\n");
+                connectionAlive = false;
+                break;
+            }
+            // Check if there are more bytes
+            if(j >= numbytes){
+                break;
+            }
+            
+            //------------------
+            //       Exit
+            //------------------
+            
+            // Check if exit
+            if (buf[j] == 'e') {
+                printf("exit \n");
+                j++;
+                if (j >= numbytes) {
+                    // invalid request
+                    invalidCount++;
+                    invalidRequest = true;
+                } else if (buf[j] == 'x'){
+                    j++;
+                    if (j >= numbytes) {
+                        // invalid request
+                        invalidCount++;
+                        invalidRequest = true;
+                    } else if(buf[j] == 'i'){
+                        j++;
+                        if (j >= numbytes) {
+                            // invalid request
+                            invalidCount++;
+                            invalidRequest = true;
+                        } else if(buf[j] == 't'){
+                            // Send exit
+                            printf("server: Exit Request\n");
+                            int network_order = htonl(0);
+                            if (send(sockfd, &network_order, sizeof(network_order), 0) == -1)
+                                perror("send");
+                            connectionAlive = false;
+                            break;
+                        } else {
+                            // invalid request
+                            invalidCount++;
+                            invalidRequest = true;
+                        }
+                    } else {
+                        // invalid request
+                        invalidCount++;
+                        invalidRequest = true;
+                    }
+                } else {
+                    // invalid request
+                    invalidCount++;
+                    invalidRequest = true;
+                }
+            }
+            
+            // Send invalid input message
+            if(invalidRequest){
+                printf("server: Invalid input: %d \n",invalidCount);
+                int network_order = htonl(-1);
+                if (send(sockfd, &network_order, sizeof(network_order), 0) == -1)
+                    perror("send");
+                invalidRequest = false;
+            }
+            
+            // Check invalid requests
+            if (invalidCount > 2) {
+                printf("server: Too many invalid requests\n");
+                connectionAlive = false;
+                break;
+            }
+            // Check if there are more bytes
+            if(j >= numbytes){
+                break;
+            }
+            
+            //------------------
+            //       Uptime
+            //------------------
+            
+            // Check if uptime
+            if (buf[j] == 'u') {
+                j++;
+                if (j >= numbytes) {
+                    // invalid request
+                    invalidCount++;
+                    invalidRequest = true;
+                } else if (buf[j] == 'p'){
+                    j++;
+                    if (j >= numbytes) {
+                        // invalid request
+                        invalidCount++;
+                        invalidRequest = true;
+                    } else if(buf[j] == 't'){
+                        j++;
+                        if (j >= numbytes) {
+                            // invalid request
+                            invalidCount++;
+                            invalidRequest = true;
+                        } else if(buf[j] == 'i'){
+                            j++;
+                            if (j >= numbytes) {
+                                // invalid request
+                                invalidCount++;
+                                invalidRequest = true;
+                            } else if(buf[j] == 'm'){
+                                j++;
+                                if (j >= numbytes) {
+                                    // invalid request
+                                    invalidCount++;
+                                    invalidRequest = true;
+                                } else if(buf[j] == 'e'){
+                                    // Send uptime
+                                    printf("server: Received Uptime Request\n");
+                                    
+//                                    struct sysinfo info;
+//                                    sysinfo(&info);
+//                                    printf("Uptime = %ld\n", info.uptime);
+//                                    int network_order;
+//                                    network_order = htonl(info.uptime);
+//                                    
+//                                    if (send(sockfd, &network_order, sizeof(network_order), 0) == -1)
+//                                        perror("send");
+                                } else {
+                                    // invalid request
+                                    invalidCount++;
+                                    invalidRequest = true;
+                                }
+                            } else {
+                                // invalid request
+                                invalidCount++;
+                                invalidRequest = true;
+                            }
+                        } else {
+                            // invalid request
+                            invalidCount++;
+                            invalidRequest = true;
+                        }
+                    } else {
+                        // invalid request
+                        invalidCount++;
+                        invalidRequest = true;
+                    }
+                } else {
+                    // invalid request
+                    invalidCount++;
+                    invalidRequest = true;
+                }
+
+            }
+            
+            
+            // Send invalid input message
+            if(invalidRequest){
+                printf("server: Invalid input: %d \n",invalidCount);
+                int network_order = htonl(-1);
+                if (send(sockfd, &network_order, sizeof(network_order), 0) == -1)
+                    perror("send");
+                invalidRequest = false;
             }
         }
     }
